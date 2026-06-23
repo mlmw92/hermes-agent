@@ -846,6 +846,17 @@ class QQAdapter(BasePlatformAdapter):
                     "GUILD_MESSAGE_CREATE",
                     "GUILD_AT_MESSAGE_CREATE",
             }:
+                # Dedup in the synchronous dispatch context to avoid a race
+                # where QQ sends the same message twice within milliseconds
+                # and both _on_message tasks pass _is_duplicate before either
+                # has written to _seen_messages.
+                msg_id = str(d.get("id", "")) if isinstance(d, dict) else ""
+                if msg_id and self._is_duplicate(msg_id):
+                    logger.debug(
+                        "[%s] Duplicate message (dedup in dispatch): %s",
+                        self._log_tag, msg_id,
+                    )
+                    return
                 asyncio.create_task(self._on_message(t, d))
             elif t == "INTERACTION_CREATE":
                 self._create_task(self._on_interaction(d))
